@@ -32,6 +32,25 @@ flamecast sessions
 | `flamecast config` | Show config file path + base URL. |
 | `flamecast agents` | List agents in your workspace. |
 | `flamecast sessions` | List recent sessions. |
+| `flamecast sessions create --input <text>` | Launch a Think session. |
+| `flamecast sessions get <sessionId>` | Show one session. |
+| `flamecast sessions events <sessionId>` | Dump the event log. |
+
+### Launching a session
+
+```bash
+export AI_GATEWAY_API_KEY=vck_...
+flamecast sessions create --input "summarize my open Linear tickets"
+```
+
+Flags on `sessions create`:
+
+| Flag | Default | Notes |
+|---|---|---|
+| `--input <text>` | _(required)_ | First message to the agent. |
+| `--model <id>` | `anthropic/claude-haiku-4-5` | Any Think-supported model. |
+| `--agent-id <id>` | _none_ | Launch a saved agent instead of an inline runtime. |
+| `--async` | off | Return immediately; poll `sessions get` / `sessions events` for progress. |
 
 ## Configuration
 
@@ -40,6 +59,7 @@ Credentials live at `~/.config/flamecast/config.json` (respects `$XDG_CONFIG_HOM
 | Env var | Default | Notes |
 |---|---|---|
 | `FLAMECAST_URL` | `https://flamecast.dev` | Point at a different worker. |
+| `AI_GATEWAY_API_KEY` | _none_ | Required for `sessions create` with inline runtime. Flamecast does not supply one. |
 
 ## Development
 
