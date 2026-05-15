@@ -1,19 +1,24 @@
 import { login } from "./auth.ts"
 import { clearConfig, configBaseUrl, configPath, readConfig } from "./config.ts"
+import { sessions } from "./sessions.ts"
 import { whoami } from "./whoami.ts"
 
 const USAGE = `flamecast — programmable cloud agents
 
 Usage:
-  flamecast login              Sign in via your browser, store an API key
-  flamecast logout             Clear the local API key
-  flamecast whoami             Print the currently authed identity
-  flamecast config             Show the local config file path + base URL
-  flamecast agents             List agents in your workspace
-  flamecast sessions           List recent sessions
+  flamecast login                          Sign in via your browser, store an API key
+  flamecast logout                         Clear the local API key
+  flamecast whoami                         Print the currently authed identity
+  flamecast config                         Show the local config file path + base URL
+  flamecast agents                         List agents in your workspace
+  flamecast sessions                       List recent sessions
+  flamecast sessions create --input <text> Launch a Think session
+  flamecast sessions get <sessionId>       Show one session
+  flamecast sessions events <sessionId>    Dump the event log
 
 Environment:
-  FLAMECAST_URL  Override the API base URL (default: https://flamecast.dev)
+  FLAMECAST_URL         Override the API base URL (default: https://flamecast.dev)
+  AI_GATEWAY_API_KEY    Required for inline-runtime session create
 `
 
 async function requireAuth() {
@@ -81,16 +86,7 @@ export async function dispatch(argv: string[]): Promise<number> {
 		}
 
 		case "sessions": {
-			const config = await requireAuth()
-			const r = await fetch(`${config.baseUrl}/sessions`, {
-				headers: { authorization: `Bearer ${config.apiKey}` },
-			})
-			if (!r.ok) {
-				process.stderr.write(`list sessions: ${r.status} ${r.statusText}\n`)
-				return 1
-			}
-			process.stdout.write(`${JSON.stringify(await r.json(), null, 2)}\n`)
-			return 0
+			return sessions(argv.slice(1))
 		}
 
 		default: {
