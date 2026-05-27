@@ -1,182 +1,151 @@
-/**
- * `flamecast sessions` subcommands: list, create, get, events.
- */
-import { readConfig } from "./config.ts"
-
-interface ParsedFlags {
-	positional: string[]
-	flags: Record<string, string | boolean>
-}
-
-function parseFlags(argv: string[]): ParsedFlags {
-	const positional: string[] = []
-	const flags: Record<string, string | boolean> = {}
-	for (let i = 0; i < argv.length; i++) {
-		const a = argv[i]
-		if (a.startsWith("--")) {
-			const key = a.slice(2)
-			const next = argv[i + 1]
-			if (next && !next.startsWith("--")) {
-				flags[key] = next
-				i++
-			} else {
-				flags[key] = true
-			}
-		} else {
-			positional.push(a)
-		}
-	}
-	return { positional, flags }
-}
-
-async function authed() {
-	const config = await readConfig()
-	if (!config?.apiKey) {
-		process.stderr.write("Not signed in. Run `flamecast login` first.\n")
-		process.exit(1)
-	}
-	return config
-}
+import { Command, Options, Args } from "@effect/cli"
+import { Effect, Option } from "effect"
+import {
+	sessionsList,
+	sessionsCreate,
+	sessionsGet,
+	eventsBySession,
+} from "@flamecast/sdk"
+import { authedClient } from "./sdk-client.ts"
 
 function printJson(data: unknown) {
 	process.stdout.write(`${JSON.stringify(data, null, 2)}\n`)
 }
 
-async function list(): Promise<number> {
-	const config = await authed()
-	const r = await fetch(`${config.baseUrl}/sessions`, {
-		headers: { authorization: `Bearer ${config.apiKey}` },
-	})
-	if (!r.ok) {
-		process.stderr.write(`list sessions: ${r.status} ${r.statusText}\n`)
-		return 1
-	}
-	printJson(await r.json())
-	return 0
-}
+// --- sessions list ---
 
-async function get(id: string | undefined): Promise<number> {
-	if (!id) {
-		process.stderr.write("usage: flamecast sessions get <sessionId>\n")
-		return 2
-	}
-	const config = await authed()
-	const r = await fetch(`${config.baseUrl}/sessions/${id}`, {
-		headers: { authorization: `Bearer ${config.apiKey}` },
-	})
-	if (r.status === 404) {
-		process.stderr.write("session not found\n")
-		return 1
-	}
-	if (!r.ok) {
-		process.stderr.write(`get session: ${r.status} ${r.statusText}\n`)
-		return 1
-	}
-	printJson(await r.json())
-	return 0
-}
-
-async function events(id: string | undefined): Promise<number> {
-	if (!id) {
-		process.stderr.write("usage: flamecast sessions events <sessionId>\n")
-		return 2
-	}
-	const config = await authed()
-	const r = await fetch(
-		`${config.baseUrl}/sessions/${id}/events?limit=500`,
-		{ headers: { authorization: `Bearer ${config.apiKey}` } },
-	)
-	if (!r.ok) {
-		process.stderr.write(`events: ${r.status} ${r.statusText}\n`)
-		return 1
-	}
-	printJson(await r.json())
-	return 0
-}
-
-async function create(flags: Record<string, string | boolean>): Promise<number> {
-	const input = typeof flags.input === "string" ? flags.input : undefined
-	if (!input) {
-		process.stderr.write(
-			"usage: flamecast sessions create --input <text> [--model <id>] [--agent-id <id>] [--async]\n",
-		)
-		return 2
-	}
-	const model = typeof flags.model === "string" ? flags.model : "anthropic/claude-haiku-4-5"
-	const agentId = typeof flags["agent-id"] === "string" ? flags["agent-id"] : undefined
-	const asyncFlag = flags.async === true || flags.async === "true"
-	const gatewayKey = process.env.AI_GATEWAY_API_KEY
-	const config = await authed()
-
-	const body: Record<string, unknown> = { input, async: asyncFlag }
-	if (agentId) {
-		body.agentId = agentId
-	} else {
-		if (!gatewayKey) {
-			process.stderr.write(
-				"AI_GATEWAY_API_KEY env var required for inline runtime auth. " +
-				"Set it, or use --agent-id to launch a saved agent.\n",
-			)
-			return 1
-		}
-		body.agent = {
-			runtime: {
-				id: "think",
-				auth: { type: "api_key", key: gatewayKey },
-				config: { model, toolMode: "mcp" },
+const listCmd = Command.make("list").pipe(
+	Command.withDescription("List recent sessions"),
+	Command.withHandler(() =>
+		Effect.tryPromise({
+			try: async () => {
+				const client = await authedClient()
+				const { data, error } = await sessionsList({ client })
+				if (error) throw new Error(`list sessions: ${JSON.stringify(error)}`)
+				printJson(data)
 			},
-		}
-	}
+			catch: (e) => e as Error,
+		})
+	),
+)
 
-	const r = await fetch(`${config.baseUrl}/sessions`, {
-		method: "POST",
-		headers: {
-			authorization: `Bearer ${config.apiKey}`,
-			"content-type": "application/json",
-		},
-		body: JSON.stringify(body),
-	})
-	if (!r.ok) {
-		const text = await r.text().catch(() => r.statusText)
-		process.stderr.write(`create session: ${r.status} ${text}\n`)
-		return 1
-	}
-	printJson(await r.json())
-	return 0
-}
+// --- sessions create ---
 
-const SESSIONS_USAGE = `flamecast sessions <verb>
+const createCmd = Command.make("create", {
+	input: Options.text("input").pipe(Options.withDescription("Message text")),
+	config: Options.text("config").pipe(
+		Options.withDescription("Path to JSON config file"),
+		Options.optional,
+	),
+	model: Options.text("model").pipe(
+		Options.withDescription("Model identifier"),
+		Options.withDefault("anthropic/claude-opus-4-7"),
+	),
+	agentId: Options.text("agent-id").pipe(
+		Options.withDescription("Existing agent ID"),
+		Options.optional,
+	),
+	async: Options.boolean("async").pipe(
+		Options.withDescription("Run asynchronously"),
+	),
+}).pipe(
+	Command.withDescription("Launch a Think session"),
+	Command.withHandler(({ input, config: configOpt, model, agentId: agentIdOpt, async: asyncFlag }) =>
+		Effect.tryPromise({
+			try: async () => {
+				const configPath = Option.getOrUndefined(configOpt)
+				const agentId = Option.getOrUndefined(agentIdOpt)
+				const gatewayKey = process.env.AI_GATEWAY_API_KEY
 
-Verbs:
-  list                                List recent sessions
-  create --input <text> [--model M]   Launch a Think session
-         [--agent-id ID] [--async]
-  get <sessionId>                     Show one session
-  events <sessionId>                  Dump the event log
+				if (configPath && agentId) {
+					throw new Error("--config and --agent-id are mutually exclusive")
+				}
 
-Env:
-  AI_GATEWAY_API_KEY    Required for inline-runtime create (Think provider auth)
-`
+				const body: Record<string, unknown> = { input, async: asyncFlag }
+				if (agentId) {
+					body.agentId = agentId
+				} else if (configPath) {
+					let parsed: unknown
+					const raw = await Bun.file(configPath).text()
+					parsed = JSON.parse(raw)
+					if (!parsed || typeof parsed !== "object" || !("runtime" in parsed)) {
+						throw new Error(`--config ${configPath}: missing top-level "runtime"`)
+					}
+					const agentSpec = parsed as Record<string, unknown>
+					const runtime = agentSpec.runtime as Record<string, unknown> | undefined
+					if (runtime && gatewayKey && !("auth" in runtime)) {
+						runtime.auth = { type: "api_key", key: gatewayKey }
+					}
+					body.agent = agentSpec
+				} else {
+					const runtime: Record<string, unknown> = {
+						id: "think",
+						config: { model, toolMode: "mcp" },
+					}
+					if (gatewayKey) {
+						runtime.auth = { type: "api_key", key: gatewayKey }
+					}
+					body.agent = { runtime }
+				}
 
-export async function sessions(argv: string[]): Promise<number> {
-	const { positional, flags } = parseFlags(argv)
-	const verb = positional[0] ?? "list"
-	switch (verb) {
-		case "list":
-			return list()
-		case "create":
-			return create(flags)
-		case "get":
-			return get(positional[1])
-		case "events":
-			return events(positional[1])
-		case "help":
-		case "--help":
-		case "-h":
-			process.stdout.write(SESSIONS_USAGE)
-			return 0
-		default:
-			process.stderr.write(`Unknown sessions verb: ${verb}\n\n${SESSIONS_USAGE}`)
-			return 2
-	}
-}
+				const client = await authedClient()
+				const { data, error } = await sessionsCreate({
+					client,
+					body: body as never,
+				})
+				if (error) throw new Error(`create session: ${JSON.stringify(error)}`)
+				printJson(data)
+			},
+			catch: (e) => e as Error,
+		})
+	),
+)
+
+// --- sessions get ---
+
+const getCmd = Command.make("get", {
+	sessionId: Args.text({ name: "sessionId" }),
+}).pipe(
+	Command.withDescription("Show one session"),
+	Command.withHandler(({ sessionId }) =>
+		Effect.tryPromise({
+			try: async () => {
+				const client = await authedClient()
+				const { data, error } = await sessionsGet({ client, path: { id: sessionId } })
+				if (error) throw new Error(`get session: ${JSON.stringify(error)}`)
+				printJson(data)
+			},
+			catch: (e) => e as Error,
+		})
+	),
+)
+
+// --- sessions events ---
+
+const eventsCmd = Command.make("events", {
+	sessionId: Args.text({ name: "sessionId" }),
+}).pipe(
+	Command.withDescription("Dump the event log"),
+	Command.withHandler(({ sessionId }) =>
+		Effect.tryPromise({
+			try: async () => {
+				const client = await authedClient()
+				const { data, error } = await eventsBySession({
+					client,
+					path: { id: sessionId },
+					query: { limit: "500" },
+				})
+				if (error) throw new Error(`events: ${JSON.stringify(error)}`)
+				printJson(data)
+			},
+			catch: (e) => e as Error,
+		})
+	),
+)
+
+// --- sessions (parent) ---
+
+export const sessionsCmd = Command.make("sessions").pipe(
+	Command.withDescription("Manage sessions"),
+	Command.withSubcommands([listCmd, createCmd, getCmd, eventsCmd]),
+)

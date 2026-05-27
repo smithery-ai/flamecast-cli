@@ -1,12 +1,14 @@
 {
-	"name": "@smithery/flamecast-cli",
-	"version": "0.1.0",
+	"name": "@flamecast/cli",
+	"version": "0.3.0",
 	"description": "Command-line client for Flamecast. Drives the device-auth flow and wraps the public REST API.",
-	"private": true,
 	"type": "module",
 	"license": "MIT",
 	"bin": {
 		"flamecast": "./bin/flamecast.ts"
+	},
+	"publishConfig": {
+		"access": "public"
 	},
 	"files": [
 		"bin",
@@ -20,6 +22,12 @@
 	},
 	"engines": {
 		"bun": ">=1.1"
+	},
+	"dependencies": {
+		"@effect/cli": "^0.75.1",
+		"@effect/platform-bun": "^0.89.0",
+		"@flamecast/sdk": "file:./sdk",
+		"effect": "^3.21.2"
 	},
 	"devDependencies": {
 		"@types/bun": "latest",

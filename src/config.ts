@@ -14,7 +14,7 @@ export interface FlamecastConfig {
 	updatedAt: string
 }
 
-const DEFAULT_BASE_URL = "https://flamecast.dev"
+const DEFAULT_BASE_URL = "https://api.flamecast.dev"
 
 export function configBaseUrl(): string {
 	return process.env.FLAMECAST_URL ?? DEFAULT_BASE_URL

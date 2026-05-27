@@ -1,0 +1,13 @@
+{
+	"name": "@flamecast/sdk",
+	"version": "0.1.0",
+	"type": "module",
+	"main": "src/index.ts",
+	"exports": {
+		".": "./src/index.ts",
+		"./client": "./src/client/index.ts"
+	},
+	"scripts": {
+		"generate": "openapi-ts -i https://api.flamecast.dev/openapi.json -o src -p @hey-api/typescript -p @hey-api/sdk"
+	}
+}
