@@ -1,6 +1,6 @@
 {
 	"name": "@flamecast/cli",
-	"version": "0.3.0",
+	"version": "0.4.0",
 	"description": "Command-line client for Flamecast. Drives the device-auth flow and wraps the public REST API.",
 	"type": "module",
 	"license": "MIT",
@@ -26,7 +26,7 @@
 	"dependencies": {
 		"@effect/cli": "^0.75.1",
 		"@effect/platform-bun": "^0.89.0",
-		"@flamecast/sdk": "file:./sdk",
+		"@flamecast/sdk": "^0.2.0",
 		"effect": "^3.21.2"
 	},
 	"devDependencies": {
